@@ -1,0 +1,50 @@
+--S'rer d'avoir l'exécutable RAR.exe dans E:
+DECLARE	@dbname NVARCHAR(1024)
+-- Set the name of the archive backup directory.
+DECLARE	@bakdir VARCHAR(300)SET	@bakdir = 'E:\Backupv06\'
+-- Set the name of the database backup directory.
+DECLARE	@dbbakdir VARCHAR(300)
+DECLARE	@bakname VARCHAR(300)
+DECLARE	@filename VARCHAR(300)
+
+SET	@dbbakdir = @bakdir
+-- Turn on the 'xp_cmdshell' function.
+EXEC sp_configure 'show advanced options', 1 
+RECONFIGURE
+EXEC sp_configure 'xp_cmdshell', 1
+RECONFIGURE
+
+Declare C cursor scroll for select distinct name from sys.databases  where database_id<5 and name<>'tempdb'order by name
+open c
+fetch next from c into @dbname
+while @@fetch_status=0
+begin
+SET	@bakname = @dbname + '_backup_' + REPLACE(CONVERT(VARCHAR(20), GETDATE(), 112) + CONVERT(VARCHAR(20), GETDATE(), 108),':','')
+-- Set the name of the backup file.
+
+SET	@filename = @dbbakdir + '\' + @bakname+'.bak'
+-- Create the directories if necessary.
+EXECUTE	master.dbo.xp_create_subdir @dbbakdir
+EXECUTE	master.dbo.xp_create_subdir @bakdir
+-- Backup the database.
+BACKUP DATABASE @dbname TO  DISK = @filename WITH NOFORMAT, NOINIT,  NAME = @bakname, SKIP, REWIND, NOUNLOAD,  STATS = 10
+
+-- Build the command line string to add the file to the ZIP archive.
+DECLARE	@cmd VARCHAR(300)SET	@cmd = 'e:\rar.exe a "' + @dbbakdir + @bakname + '.rar" "' + @filename + '"'
+-- Execute the command.
+EXEC xp_cmdshell @cmd
+-- Turn off the 'xp_cmdshell' function.
+
+SET	@cmd = 'del "' +@filename + '"'
+print @cmd
+-- Execute the command.
+EXEC xp_cmdshell @cmd
+fetch next from c into @dbname
+end
+close c
+deallocate c
+
+EXEC sp_configure 'xp_cmdshell', 0
+RECONFIGURE
+EXEC sp_configure 'show advanced options', 0
+RECONFIGURE
